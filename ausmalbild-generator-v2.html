@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ausmalbild-Generator v2</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;600&display=swap');
+
+    :root {
+      --bg: #f5f4f0;
+      --surface: #ffffff;
+      --border: #d8d5cc;
+      --ink: #1a1917;
+      --muted: #6b6860;
+      --accent: #2d5a27;
+      --accent-light: #e8f0e6;
+      --radius: 8px;
+      font-family: 'DM Sans', sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body { background: var(--bg); color: var(--ink); min-height: 100vh; }
+
+    header {
+      padding: 24px 28px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+    header h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+    header span { font-size: 13px; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+    .layout { display: grid; grid-template-columns: 260px 1fr; min-height: calc(100vh - 57px); }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 20px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 24px 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .18s, background .18s;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-light);
+    }
+    .drop-zone input {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-zone p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .drop-icon { font-size: 28px; }
+
+    .ctrl { display: flex; flex-direction: column; gap: 6px; }
+    .ctrl-header { display: flex; justify-content: space-between; align-items: center; }
+    .ctrl-header label { font-size: 13px; font-weight: 400; }
+    .ctrl-header .val {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      background: var(--bg);
+      padding: 1px 6px;
+      border-radius: 4px;
+      min-width: 36px;
+      text-align: right;
+    }
+    .hint { font-size: 11px; color: var(--muted); }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .toggle-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .toggle-row input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
+
+    .btn-group { display: flex; flex-direction: column; gap: 8px; }
+    button {
+      border: none; border-radius: var(--radius); padding: 9px 14px;
+      font-family: inherit; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s, background .15s;
+    }
+    button:hover { opacity: .85; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-secondary { background: var(--bg); color: var(--ink); border: 1px solid var(--border); font-weight: 400; }
+
+    /* ── Main ── */
+    .main { display: flex; flex-direction: column; gap: 0; }
+
+    .canvases {
+      display: flex;
+      gap: 16px;
+      padding: 20px;
+      flex: 1;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-head {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .8px;
+      text-transform: uppercase;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-meta { font-family: 'DM Mono', monospace; font-weight: 400; }
+
+    .canvas-wrap {
+      padding: 10px;
+      background: #e8e6e0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    canvas {
+      display: block;
+      background: #fff;
+      /* Kein festes width/height im CSS — das JS setzt es direkt */
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 1px 4px rgba(0,0,0,.12);
+    }
+
+    .status-bar {
+      padding: 10px 20px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 12px;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    /* progress overlay */
+    .overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(245,244,240,.75);
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--accent);
+      backdrop-filter: blur(2px);
+    }
+    .overlay.show { display: flex; }
+
+    @media (max-width: 680px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Ausmalbild-Generator</h1>
+  <span>v2 — originalgetreues Seitenverhältnis</span>
+</header>
+
+<div class="layout">
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+
+    <div>
+      <div class="section-label">Bild</div>
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-icon">🖼</div>
+        <strong style="font-size:13px">Bild öffnen</strong>
+        <p>Drag & Drop oder klicken</p>
+        <input id="fileInput" type="file" accept="image/*">
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Kantenerkennung</div>
+      <div class="ctrl">
+        <div class="ctrl-header"><label>Threshold</label><span class="val" id="detailVal">120</span></div>
+        <input id="detail" type="range" min="0" max="255" step="1" value="120">
+        <span class="hint">Kleiner = mehr Linien</span>
+      </div>
+      <div class="ctrl" style="margin-top:12px">
+        <div class="ctrl-header"><label>Glätten (Blur)</label><span class="val" id="blurVal">1</span></div>
+        <input id="blur" type="range" min="0" max="5" step="1" value="1">
+        <span class="hint">Reduziert Rauschen vor Kantenerkennung</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Linien</div>
+      <div class="ctrl">
+        <div class="ctrl-header"><label>Stärke</label><span class="val" id="lineVal">2</span>px</div>
+        <input id="line" type="range" min="1" max="12" step="1" value="2">
+      </div>
+      <div class="ctrl" style="margin-top:12px">
+        <div class="ctrl-header"><label>Despeckle</label><span class="val" id="despVal">20</span>px</div>
+        <input id="despeckle" type="range" min="0" max="200" step="5" value="20">
+        <span class="hint">Kleine Flecken entfernen</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">Ausgabe</div>
+      <div class="ctrl">
+        <div class="ctrl-header"><label>Skalierung</label><span class="val" id="scaleVal">1×</span></div>
+        <input id="scale" type="range" min="1" max="10" step="1" value="1">
+        <span class="hint">Höher = bessere Druckauflösung</span>
+      </div>
+      <div class="toggle-row" style="margin-top:10px">
+        <input id="invert" type="checkbox">
+        <label for="invert">Invertieren (weiß auf schwarz)</label>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn-primary" id="generate">▶ Generieren</button>
+      <button class="btn-secondary" id="download">↓ PNG herunterladen</button>
+      <button class="btn-secondary" id="print">⎙ Drucken</button>
+    </div>
+
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+    <div class="canvases">
+      <div class="panel" style="flex: 2 1 400px;">
+        <div class="panel-head">
+          Ausmalbild
+          <span class="panel-meta" id="outMeta">—</span>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="preview"></canvas>
+        </div>
+      </div>
+      <div class="panel" style="flex: 1 1 200px; max-width: 320px;">
+        <div class="panel-head">
+          Original
+          <span class="panel-meta" id="srcMeta">—</span>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="source"></canvas>
+        </div>
+      </div>
+    </div>
+    <div class="status-bar" id="statusBar">
+      <span>Kein Bild geladen</span>
+    </div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay">Verarbeite Bild…</div>
+
+<script>
+// ── Elemente ──
+const fileInput  = document.getElementById('fileInput');
+const dropZone   = document.getElementById('dropZone');
+const preview    = document.getElementById('preview');
+const srcCanvas  = document.getElementById('source');
+const ctxPrev    = preview.getContext('2d');
+const ctxSrc     = srcCanvas.getContext('2d');
+const overlay    = document.getElementById('overlay');
+const statusBar  = document.getElementById('statusBar');
+const outMeta    = document.getElementById('outMeta');
+const srcMeta    = document.getElementById('srcMeta');
+
+const scaleEl    = document.getElementById('scale');
+const lineEl     = document.getElementById('line');
+const detailEl   = document.getElementById('detail');
+const blurEl     = document.getElementById('blur');
+const despEl     = document.getElementById('despeckle');
+const invertEl   = document.getElementById('invert');
+
+// Labels
+const bind = (el, labelId, fmt) =>
+  el.addEventListener('input', () => { document.getElementById(labelId).textContent = fmt(el.value); });
+bind(scaleEl,  'scaleVal',  v => v + '×');
+bind(lineEl,   'lineVal',   v => v);
+bind(detailEl, 'detailVal', v => v);
+bind(blurEl,   'blurVal',   v => v);
+bind(despEl,   'despVal',   v => v);
+
+// ── Bild laden ──
+let img = null;
+
+function loadImage(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(file);
+  const i = new Image();
+  i.onload = () => {
+    img = i;
+    drawSource();
+    setStatus(`Geladen: ${i.width} × ${i.height} px — bereit zum Generieren`);
+  };
+  i.src = url;
+}
+
+fileInput.addEventListener('change', e => loadImage(e.target.files[0]));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  loadImage(e.dataTransfer.files[0]);
+});
+
+// ── Source-Vorschau: exaktes Seitenverhältnis ──
+function drawSource() {
+  if (!img) return;
+  // Vorschau-Canvas bekommt exakt das Seitenverhältnis des Originalbilds
+  const maxW = 300;
+  const ratio = img.height / img.width;
+  const w = maxW;
+  const h = Math.round(maxW * ratio);
+  srcCanvas.width  = w;
+  srcCanvas.height = h;
+  ctxSrc.drawImage(img, 0, 0, w, h);
+  srcMeta.textContent = `${img.width}×${img.height}`;
+}
+
+// ── Generieren ──
+async function generate() {
+  if (!img) { alert('Bitte zuerst ein Bild öffnen.'); return; }
+
+  overlay.classList.add('show');
+  // Microtask-Pause damit der Browser das Overlay rendert
+  await new Promise(r => setTimeout(r, 30));
+
+  try {
+    const scale = parseInt(scaleEl.value) || 1;
+
+    // Ausgabegröße = Originalgröße × scale (kein festes Limit!)
+    const w = img.width  * scale;
+    const h = img.height * scale;
+
+    // Arbeits-Canvas
+    const work = document.createElement('canvas');
+    work.width = w; work.height = h;
+    const wctx = work.getContext('2d');
+    wctx.fillStyle = '#fff';
+    wctx.fillRect(0, 0, w, h);
+    wctx.drawImage(img, 0, 0, w, h);
+
+    const imgData = wctx.getImageData(0, 0, w, h);
+
+    // Graustufen
+    const gray = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const d = imgData.data;
+      gray[i] = 0.299 * d[i*4] + 0.587 * d[i*4+1] + 0.114 * d[i*4+2];
+    }
+
+    // Box Blur (fixiert)
+    const blurR = parseInt(blurEl.value) || 0;
+    if (blurR > 0) boxBlur(gray, w, h, blurR);
+
+    // Sobel mit echter Normalisierung
+    const edges = sobel(gray, w, h);
+
+    // Threshold
+    const thr = parseInt(detailEl.value);
+    const binary = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) binary[i] = edges[i] > thr ? 1 : 0;
+
+    // Dilation
+    const thick = parseInt(lineEl.value) - 1;
+    if (thick > 0) dilate(binary, w, h, thick);
+
+    // Despeckle
+    const minSz = parseInt(despEl.value);
+    if (minSz > 0) removeSmall(binary, w, h, minSz);
+
+    // Output-Canvas: exaktes Seitenverhältnis
+    preview.width  = w;
+    preview.height = h;
+
+    const invert = invertEl.checked;
+    const outImg = ctxPrev.createImageData(w, h);
+    const d = outImg.data;
+    for (let i = 0; i < w * h; i++) {
+      const isEdge = binary[i] ^ (invert ? 0 : 0); // normal
+      const on  = invert ? (binary[i] ? 255 : 0) : (binary[i] ? 0 : 255);
+      const off = invert ? 0 : 255;
+      const c = binary[i] ? (invert ? 255 : 0) : (invert ? 0 : 255);
+      d[i*4] = d[i*4+1] = d[i*4+2] = c;
+      d[i*4+3] = 255;
+    }
+    ctxPrev.putImageData(outImg, 0, 0);
+
+    outMeta.textContent = `${w}×${h}`;
+    setStatus(`Fertig — Ausgabe: ${w}×${h} px (Seitenverhältnis ${img.width}:${img.height} → ${(img.width/img.height).toFixed(3)})`);
+    drawSource();
+  } finally {
+    overlay.classList.remove('show');
+  }
+}
+
+// ── Bildverarbeitung ──
+
+function boxBlur(data, w, h, r) {
+  // Horizontal
+  const tmp = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    let sum = 0, count = 0;
+    for (let x = 0; x < w; x++) {
+      // add right edge
+      sum += data[y * w + x];
+      count++;
+      // remove left edge
+      if (x > r * 2) { sum -= data[y * w + (x - r * 2 - 1)]; count--; }
+      if (x >= r) tmp[y * w + (x - r)] = sum / count;
+    }
+    // flush remaining right side
+    for (let x = w - r; x < w; x++) {
+      sum -= data[y * w + (x - r)]; count--;
+      if (count > 0) tmp[y * w + x] = sum / count;
+    }
+  }
+  // Vertical
+  for (let x = 0; x < w; x++) {
+    let sum = 0, count = 0;
+    for (let y = 0; y < h; y++) {
+      sum += tmp[y * w + x]; count++;
+      if (y > r * 2) { sum -= tmp[(y - r * 2 - 1) * w + x]; count--; }
+      if (y >= r) data[(y - r) * w + x] = sum / count;
+    }
+    for (let y = h - r; y < h; y++) {
+      sum -= tmp[(y - r) * w + x]; count--;
+      if (count > 0) data[y * w + x] = sum / count;
+    }
+  }
+}
+
+function sobel(gray, w, h) {
+  const out = new Float32Array(w * h);
+  let maxMag = 0;
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      const gx =
+        -gray[(y-1)*w+(x-1)] + gray[(y-1)*w+(x+1)]
+        - 2*gray[y*w+(x-1)]  + 2*gray[y*w+(x+1)]
+        - gray[(y+1)*w+(x-1)] + gray[(y+1)*w+(x+1)];
+      const gy =
+        -gray[(y-1)*w+(x-1)] - 2*gray[(y-1)*w+x] - gray[(y-1)*w+(x+1)]
+        + gray[(y+1)*w+(x-1)] + 2*gray[(y+1)*w+x] + gray[(y+1)*w+(x+1)];
+      const mag = Math.hypot(gx, gy);
+      out[i] = mag;
+      if (mag > maxMag) maxMag = mag;
+    }
+  }
+  // Normalisiere auf 0–255 mit echtem Max (kein willkürlicher Faktor)
+  if (maxMag > 0) {
+    const inv = 255 / maxMag;
+    for (let i = 0; i < out.length; i++) out[i] *= inv;
+  }
+  return out;
+}
+
+function dilate(binary, w, h, iters) {
+  const dirs = [-1, 1, -w, w, -w-1, -w+1, w-1, w+1];
+  for (let it = 0; it < iters; it++) {
+    const copy = binary.slice();
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        if (copy[i]) continue;
+        for (const d of dirs) { if (copy[i + d]) { binary[i] = 1; break; } }
+      }
+    }
+  }
+}
+
+function removeSmall(binary, w, h, minSize) {
+  const visited = new Uint8Array(w * h);
+  const stack = [];
+  for (let start = 0; start < w * h; start++) {
+    if (visited[start] || !binary[start]) continue;
+    stack.length = 0;
+    stack.push(start);
+    visited[start] = 1;
+    const component = [start];
+    while (stack.length) {
+      const cur = stack.pop();
+      const x = cur % w, y = (cur / w) | 0;
+      const ns = [];
+      if (x > 0)   ns.push(cur - 1);
+      if (x < w-1) ns.push(cur + 1);
+      if (y > 0)   ns.push(cur - w);
+      if (y < h-1) ns.push(cur + w);
+      for (const n of ns) {
+        if (!visited[n] && binary[n]) { visited[n] = 1; stack.push(n); component.push(n); }
+      }
+    }
+    if (component.length < minSize) {
+      for (const idx of component) binary[idx] = 0;
+    }
+  }
+}
+
+// ── Buttons ──
+document.getElementById('generate').addEventListener('click', generate);
+
+document.getElementById('download').addEventListener('click', () => {
+  if (!preview.width) { alert('Erst generieren.'); return; }
+  const a = document.createElement('a');
+  a.href = preview.toDataURL('image/png');
+  a.download = 'ausmalbild.png';
+  a.click();
+});
+
+document.getElementById('print').addEventListener('click', () => {
+  if (!preview.width) { alert('Erst generieren.'); return; }
+  const w = window.open('');
+  w.document.write(`<html><head><style>
+    body{margin:0;display:flex;justify-content:center;align-items:flex-start;}
+    img{max-width:100%;width:100%;height:auto;}
+    @media print{body{margin:0}img{width:100%;height:auto;}}
+  </style></head><body><img src="${preview.toDataURL('image/png')}"></body></html>`);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 400);
+});
+
+function setStatus(msg) {
+  statusBar.innerHTML = `<span>${msg}</span>`;
+}
+</script>
+</body>
+</html>
